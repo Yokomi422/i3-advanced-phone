@@ -72,3 +72,6 @@ int main(int argc, char **argv) {
     close(socket_fd);
     return 0;
 }
+
+//client: ./client_multiple_users 10.100.81.137 50000
+// rec -t raw -b 16 -c 1 -e s -r 44100 - | ./client_multiple_users 10.100.81.137 50000 | play -t raw -b 16 -c 1 -e s -r 44100 -
