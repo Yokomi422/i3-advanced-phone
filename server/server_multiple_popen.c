@@ -5,9 +5,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
+#define TEXT_PREFIX "TEXT:"
+#define COMMAND_PREFIX "Command: "
 
 typedef struct {
     int client_socket;
@@ -27,28 +30,76 @@ void broadcast_message(int sender_socket, char *message, int message_len) {
     pthread_mutex_unlock(&client_mutex);
 }
 
+void send_message(int client_socket, char *message) {
+    send(client_socket, message, strlen(message), 0);
+}
+
+char *trim_whitespace(char *str) {
+    char *end;
+
+    while (isspace((unsigned char)*str)) str++;
+
+    if (*str == 0) 
+        return str;
+
+    end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+
+    end[1] = '\0';
+
+    return str;
+}
+
 void *handle_client(void *arg) {
     client_info_t *client_info = (client_info_t *)arg;
     int client_socket = client_info->client_socket;
     char buffer[BUFFER_SIZE];
     int recv_size;
 
-    FILE *listening_fd = popen("rec -b 16 -c 1 -e s -r 44100 -t raw - ", "r");
-    FILE *speaking_fd = popen("play -b 16 -c 1 -e s -r 44100 -t raw - ", "w");
+    FILE *speaking_fd = popen("play -r 48000 -b 16 -c 1 -e signed-integer -t raw - 2>/dev/null", "w");
 
-    if (listening_fd == NULL || speaking_fd == NULL) {
+    if (speaking_fd == NULL) {
         perror("popen");
         close(client_socket);
         free(client_info);
         return NULL;
     }
 
-    while ((recv_size = recv(client_socket, buffer, sizeof(buffer), 0)) > 0) {
-        broadcast_message(client_socket, buffer, recv_size);
-        fwrite(buffer, 1, recv_size, speaking_fd);
+    while ((recv_size = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
+        buffer[recv_size] = '\0';
+
+        if (strncmp(buffer, TEXT_PREFIX, strlen(TEXT_PREFIX)) == 0) {
+            char *text_message = buffer + strlen(TEXT_PREFIX);
+            printf("Received text message: %s\n", text_message);
+
+            if (strncmp(text_message, COMMAND_PREFIX, strlen(COMMAND_PREFIX)) == 0) {
+                char *command = text_message + strlen(COMMAND_PREFIX);
+                command = trim_whitespace(command); 
+                printf("Your typed command: '%s'\n", command);  
+                char response[BUFFER_SIZE];
+
+                // コマンドを検証する部分
+                if (strcmp(command, "test") == 0) {
+                    snprintf(response, sizeof(response), "nice command!!!");
+                    printf("Response: nice command!!!\n");
+                } else if (strcmp(command, "happy") == 0) {
+                    snprintf(response, sizeof(response), "best command!!!");
+                    printf("Response: best command!!!\n");
+                } else {
+                    snprintf(response, sizeof(response), "your command is %s", command);
+                    printf("Response: your command is %s\n", command);
+                }
+
+                send_message(client_socket, response);
+            } else {
+                broadcast_message(client_socket, buffer, recv_size);
+            }
+        } else {
+            fwrite(buffer, 1, recv_size, speaking_fd);
+            broadcast_message(client_socket, buffer, recv_size);
+        }
     }
 
-    pclose(listening_fd);
     pclose(speaking_fd);
     close(client_socket);
     pthread_mutex_lock(&client_mutex);

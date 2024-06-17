@@ -7,6 +7,7 @@
 #include <pthread.h>
 
 #define BUFFER_SIZE 1024
+#define TEXT_PREFIX "TEXT:"
 
 typedef struct {
     int socket_fd;
@@ -31,7 +32,7 @@ void *receive_messages(void *arg) {
     pthread_exit(NULL);
 }
 
-void *send_messages(void *arg) {
+void *send_audio_messages(void *arg) {
     client_info_t *client_info = (client_info_t *)arg;
     int socket_fd = client_info->socket_fd;
     char send_buf[BUFFER_SIZE];
@@ -42,9 +43,25 @@ void *send_messages(void *arg) {
     }
 
     pclose(client_info->listening_fd);
-    pclose(client_info->speaking_fd);
     close(socket_fd);
     free(client_info);
+    pthread_exit(NULL);
+}
+
+void *handle_terminal_input(void *arg) {
+    client_info_t *client_info = (client_info_t *)arg;
+    int socket_fd = client_info->socket_fd;
+    char send_buf[BUFFER_SIZE];
+    char prefixed_buf[BUFFER_SIZE + 6]; 
+    int send_size;
+
+    while (fgets(send_buf, sizeof(send_buf), stdin) != NULL) {
+        snprintf(prefixed_buf, sizeof(prefixed_buf), "%s%s", TEXT_PREFIX, send_buf);
+        send_size = strlen(prefixed_buf);
+        send(socket_fd, prefixed_buf, send_size, 0);
+    }
+
+    close(socket_fd);
     pthread_exit(NULL);
 }
 
@@ -74,8 +91,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    FILE *listening_fd = popen("rec -b 16 -c 1 -e s -r 44100 -t raw - ", "r");
-    FILE *speaking_fd = popen("play -b 16 -c 1 -e s -r 44100 -t raw - ", "w");
+    FILE *listening_fd = popen("rec -r 48000 -b 16 -c 1 -e signed-integer -t raw - 2>/dev/null", "r");
+    FILE *speaking_fd = popen("play -r 48000 -b 16 -c 1 -e signed-integer -t raw - 2>/dev/null", "w");
 
     if (listening_fd == NULL || speaking_fd == NULL) {
         perror("popen");
@@ -83,17 +100,19 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    pthread_t recv_thread, send_thread;
+    pthread_t recv_thread, send_audio_thread, terminal_thread;
     client_info_t *client_info = malloc(sizeof(client_info_t));
     client_info->socket_fd = socket_fd;
     client_info->listening_fd = listening_fd;
     client_info->speaking_fd = speaking_fd;
 
     pthread_create(&recv_thread, NULL, receive_messages, client_info);
-    pthread_create(&send_thread, NULL, send_messages, client_info);
+    pthread_create(&send_audio_thread, NULL, send_audio_messages, client_info);
+    pthread_create(&terminal_thread, NULL, handle_terminal_input, client_info);
 
     pthread_join(recv_thread, NULL);
-    pthread_join(send_thread, NULL);
+    pthread_join(send_audio_thread, NULL);
+    pthread_join(terminal_thread, NULL);
 
     return 0;
 }
