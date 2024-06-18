@@ -75,7 +75,7 @@ void *handle_client(void *arg) {
     int recv_size;
 
     // popenで子プロセスの作成 speaking_fdでserverがclientに音声を送る
-    FILE *speaking_fd = popen("play -r 44100 -b 16 -c 1 -e s -t raw - 2>/dev/null", "w");
+    FILE *speaking_fd = popen("play -r 48000 -b 16 -c 1 -e s -t raw - 2>/dev/null", "w");
 
     if (speaking_fd == NULL) {
         perror("popen");
