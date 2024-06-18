@@ -31,6 +31,13 @@ Mutexについて
 */
 pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+senderが送ったデータをsender以外に送信する
+
+- sender_socket: int 送信者のファイルディスクリプタ
+- message: char * 送信するデータ
+- message_len: int 送信するデータの長さ
+*/
 void broadcast_message(int sender_socket, char *message, int message_len) {
     pthread_mutex_lock(&client_mutex);
     for (int i = 0; i < MAX_CLIENTS; ++i) {
@@ -68,7 +75,7 @@ void *handle_client(void *arg) {
     int recv_size;
 
     // popenで子プロセスの作成 speaking_fdでserverがclientに音声を送る
-    FILE *speaking_fd = popen("play -r 48000 -b 16 -c 1 -e s -t raw - 2>/dev/null", "w");
+    FILE *speaking_fd = popen("play -r 44100 -b 16 -c 1 -e s -t raw - 2>/dev/null", "w");
 
     if (speaking_fd == NULL) {
         perror("popen");
@@ -82,7 +89,6 @@ void *handle_client(void *arg) {
 
         // "TEXT: "で始めるデータはテキスト
         if (strncmp(buffer, TEXT_PREFIX, strlen(TEXT_PREFIX)) == 0) {
-            // TEXT_PREFIXを取り除く
             char *text_message = buffer + strlen(TEXT_PREFIX);
             printf("Received text message: %s\n", text_message);
 
