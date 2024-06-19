@@ -19,6 +19,7 @@ client_addr: struct sockaddr_in は、clientのアドレス情報を保持する
 typedef struct {
     int client_socket;
     struct sockaddr_in client_addr;
+    char name[50];
 } client_info_t;
 
 int client_sockets[MAX_CLIENTS];

@@ -13,6 +13,7 @@ typedef struct {
     int socket_fd;
     FILE *listening_fd;
     FILE *speaking_fd;
+    char name[50];
 } client_info_t;
 
 void *receive_messages(void *arg) {
@@ -25,6 +26,7 @@ void *receive_messages(void *arg) {
         fwrite(recv_buf, 1, recv_size, client_info->speaking_fd);
     }
 
+    // control + cで終了したとき、スレッドを終了する
     pclose(client_info->listening_fd);
     pclose(client_info->speaking_fd);
     close(socket_fd);
@@ -56,6 +58,7 @@ void *handle_terminal_input(void *arg) {
     int send_size;
 
     while (fgets(send_buf, sizeof(send_buf), stdin) != NULL) {
+        // 入力された文字列の先頭に"TEXT:"を付与して送信
         snprintf(prefixed_buf, sizeof(prefixed_buf), "%s%s", TEXT_PREFIX, send_buf);
         send_size = strlen(prefixed_buf);
         send(socket_fd, prefixed_buf, send_size, 0);
@@ -66,13 +69,14 @@ void *handle_terminal_input(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <ip> <port>\n", argv[0]);
+    if (argc != 4) { 
+        fprintf(stderr, "Usage: %s <ip> <port> <name>\n", argv[0]);
         return 1;
     }
 
     const char *IP_ADDR = argv[1];
     const int PORT = atoi(argv[2]);
+    const char *name = argv[3];
 
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd == -1) {
@@ -100,12 +104,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    pthread_t recv_thread, send_audio_thread, terminal_thread;
     client_info_t *client_info = malloc(sizeof(client_info_t));
     client_info->socket_fd = socket_fd;
     client_info->listening_fd = listening_fd;
     client_info->speaking_fd = speaking_fd;
+    strncpy(client_info->name, name, sizeof(client_info->name) - 1); 
+    client_info->name[sizeof(client_info->name) - 1] = '\0';
 
+    send(socket_fd, client_info->name, strlen(client_info->name), 0);
+
+    pthread_t recv_thread, send_audio_thread, terminal_thread;
     pthread_create(&recv_thread, NULL, receive_messages, client_info);
     pthread_create(&send_audio_thread, NULL, send_audio_messages, client_info);
     pthread_create(&terminal_thread, NULL, handle_terminal_input, client_info);
