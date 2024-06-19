@@ -8,6 +8,7 @@
 
 #define BUFFER_SIZE 1024
 #define TEXT_PREFIX "TEXT:"
+#define PREFIX_LENGTH 5
 
 typedef struct {
     int socket_fd;
@@ -22,11 +23,15 @@ void *receive_messages(void *arg) {
     char recv_buf[BUFFER_SIZE];
     int recv_size;
 
-    while ((recv_size = recv(socket_fd, recv_buf, sizeof(recv_buf), 0)) > 0) {
-        fwrite(recv_buf, 1, recv_size, client_info->speaking_fd);
+    while ((recv_size = recv(socket_fd, recv_buf, sizeof(recv_buf) - 1, 0)) > 0) {
+        recv_buf[recv_size] = '\0'; 
+        if (strncmp(recv_buf, TEXT_PREFIX, PREFIX_LENGTH) == 0) {
+            printf("%s", recv_buf + PREFIX_LENGTH);
+        } else {
+            fwrite(recv_buf, 1, recv_size, client_info->speaking_fd);
+        }
     }
 
-    // control + cで終了したとき、スレッドを終了する
     pclose(client_info->listening_fd);
     pclose(client_info->speaking_fd);
     close(socket_fd);
@@ -54,11 +59,10 @@ void *handle_terminal_input(void *arg) {
     client_info_t *client_info = (client_info_t *)arg;
     int socket_fd = client_info->socket_fd;
     char send_buf[BUFFER_SIZE];
-    char prefixed_buf[BUFFER_SIZE + 6]; 
+    char prefixed_buf[BUFFER_SIZE + PREFIX_LENGTH];
     int send_size;
 
     while (fgets(send_buf, sizeof(send_buf), stdin) != NULL) {
-        // 入力された文字列の先頭に"TEXT:"を付与して送信
         snprintf(prefixed_buf, sizeof(prefixed_buf), "%s%s", TEXT_PREFIX, send_buf);
         send_size = strlen(prefixed_buf);
         send(socket_fd, prefixed_buf, send_size, 0);
@@ -69,7 +73,7 @@ void *handle_terminal_input(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 4) { 
+    if (argc != 4) {
         fprintf(stderr, "Usage: %s <ip> <port> <name>\n", argv[0]);
         return 1;
     }
@@ -108,7 +112,7 @@ int main(int argc, char **argv) {
     client_info->socket_fd = socket_fd;
     client_info->listening_fd = listening_fd;
     client_info->speaking_fd = speaking_fd;
-    strncpy(client_info->name, name, sizeof(client_info->name) - 1); 
+    strncpy(client_info->name, name, sizeof(client_info->name) - 1);
     client_info->name[sizeof(client_info->name) - 1] = '\0';
 
     send(socket_fd, client_info->name, strlen(client_info->name), 0);
